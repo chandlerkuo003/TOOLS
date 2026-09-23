@@ -13,13 +13,13 @@ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:en
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",system-ui,sans-serif;line-height:1.6;display:flex;flex-direction:column;align-items:center;padding:40px 20px}
 .seal{width:56px;height:56px;display:grid;place-items:center;border:3px solid var(--seal);color:var(--seal);border-radius:8px;font-weight:700;font-size:30px;transform:rotate(-5deg);margin-bottom:14px}
 h1{font-size:22px;margin:0 0 6px;text-align:center}
-p.sub{color:var(--muted);margin:0 0 28px;text-align:center;max-width:52ch;font-size:14.5px}
+p.sub{color:var(--muted);margin:0 0 28px;text-align:center;max-width:min(100%,860px);font-size:14.5px}
 .tools{display:grid;gap:16px;width:100%;max-width:760px}
 a.tool{display:block;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px;text-decoration:none;color:inherit}
 a.tool:hover{border-color:var(--accent)}
 a.tool h2{margin:0 0 6px;font-size:18px;color:var(--accent)}
 a.tool p{margin:0;color:var(--muted);font-size:14px}
-footer{margin-top:30px;color:var(--muted);font-size:13px;text-align:center;max-width:56ch}
+footer{margin-top:30px;color:var(--muted);font-size:13px;text-align:center;max-width:min(100%,860px)}
 </style>
 </head>
 <body>
@@ -27,9 +27,9 @@ footer{margin-top:30px;color:var(--muted);font-size:13px;text-align:center;max-w
 <h1>苗栗縣政府政風處</h1>
 <p class="sub">以下工具全部在你自己的瀏覽器中執行，資料不會上傳，也不會留存在本網站。</p>
 <div class="tools">
-  <a class="tool" href="lottery.html"><h2>抽籤小幫手</h2><p>載入 Excel、Word 或 CSV 名單，可依人數或中籤比例設定名額，逐一或一次抽出，並匯出中籤紀錄。</p></a>
+  <a class="tool" href="lottery.html"><h2>抽籤小幫手</h2><p>財申、赴大陸抽籤好工具。載入 Excel、Word 或 CSV 名單，可依人數或中籤比例設定名額，逐一或一次抽出，並匯出中籤紀錄。</p></a>
   <a class="tool" href="apd.html"><h2>採購異常分析小幫手</h2><p>分析政府電子採購網匯出的決標資料，提供得標件數與金額排名、加權積分排名，以及交替得標、共同投標集中度、標比集中情形等廠商關聯性分析。</p></a>
 </div>
-<footer>維護人員：chandlerkuo<br>使用上如有問題，歡迎與我聯繫。<br>分析與抽籤結果僅供參考，實際個案仍須依規定調卷研析。</footer>
+<footer>維護人員：chandlerkuo<br>使用上如有問題，歡迎與我聯繫。<br>分析與抽籤結果僅供參考，實際個案仍須依規定調卷研析。<br>本網站僅提供前述工具，不蒐集、不傳送、不留存使用者載入的任何資料。</footer>
 </body>
 </html>
