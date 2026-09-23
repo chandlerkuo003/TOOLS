@@ -207,7 +207,7 @@ tbody tr.click:hover{background:var(--accent-soft)}
       <nav class="tabs" role="tablist" id="tabs">
         <button role="tab" data-tab="overview" aria-selected="true">總覽</button>
         <button role="tab" data-tab="rank" aria-selected="false">排名</button>
-        <button role="tab" data-tab="rig" aria-selected="false">圍標態樣</button>
+        <button role="tab" data-tab="rig" aria-selected="false">廠商關聯性</button>
         <button role="tab" data-tab="cases" aria-selected="false">案件明細</button>
         <button role="tab" data-tab="map" aria-selected="false">欄位對應</button>
       </nav>
@@ -266,11 +266,11 @@ const FIELDS = [
 ];
 const FIELD_USE = {
   winner:'必要欄位，沒有就無法分析',
-  bidders:'輪流得標、固定陪標、共同投標、投標家數',
+  bidders:'交替得標、共同投標集中度、投標家數',
   total:'得標金額排名、金額統計',
   ratio:'標比集中分析（沒有時會用 決標金額 ÷ 底價 計算）',
   floor:'標比計算、排除無底價案件',
-  awardDate:'日期篩選、輪流得標的先後順序',
+  awardDate:'日期篩選、交替得標的先後順序',
 };
 const normH = s => String(s ?? '').replace(/^\uFEFF/, '').replace(/[\s"'　]/g, '').replace(/（/g,'(').replace(/）/g,')').replace(/％/g,'%').toLowerCase();
 const ALIAS_SET = new Set(FIELDS.flatMap(f => f.a.map(normH)));
@@ -539,7 +539,7 @@ function computeRig(){
     }
   }
   const pairList = [...pairs.values()].filter(p => p.n >= GS.minCo);
-  // 輪流得標
+  // 交替得標
   const rotation = pairList.filter(p => p.aW >= 1 && p.bW >= 1).map(p => {
     const share = Math.min(1, (p.aW + p.bW) / p.n), bal = Math.min(p.aW, p.bW) / Math.max(p.aW, p.bW);
     const seq = [...p.cases].sort((x, y) => (x.date || 0) - (y.date || 0)).map(c => { const aw = c.winners.includes(p.a), bw = c.winners.includes(p.b); return aw && bw ? 'ab' : aw ? 'a' : bw ? 'b' : 'o'; });
@@ -547,7 +547,7 @@ function computeRig(){
     const level = (share >= 0.8 && bal >= 0.5) ? 2 : (share >= 0.6 && bal >= 0.25) ? 1 : 0;
     return {...p, share:share * 100, bal:bal * 100, seq, sw, level};
   });
-  // 固定陪標
+  // 共同投標集中
   const accompany = [...acc.values()].filter(a => a.n >= GS.minCo).map(a => {
     const lv = S.vs.get(a.l) || {parts:0, wins:0};
     const lost = lv.parts - lv.wins;
@@ -715,7 +715,7 @@ function renderOverview(){
   const winners = [...S.vs.values()].filter(v => v.wins > 0).length;
   let h = `<p class="summary">目前條件下共 <b>${cs.length.toLocaleString()}</b> 件決標案件、<b>${winners.toLocaleString()}</b> 家得標廠商，決標金額合計 <b>${fmtN(sum)}</b> 元${ds.length ? `，決標期間 ${fmtD(ds[0])} 至 ${fmtD(ds[ds.length - 1])}` : ''}。</p>`;
   if (!S.hasAmount) h += `<div class="warnbox">這批資料沒有讀到任何決標金額，金額統計與金額排名將無法使用。請到「欄位對應」確認「總決標金額」欄位。</div>`;
-  if (!S.hasBidders) h += `<div class="warnbox">這批資料沒有讀到「參與競標廠商」，輪流得標、固定陪標與投標家數分析將無法使用。若檔案其實有這個欄位，請到「欄位對應」指定。</div>`;
+  if (!S.hasBidders) h += `<div class="warnbox">這批資料沒有讀到「參與競標廠商」，交替得標、共同投標集中度與投標家數分析將無法使用。若檔案其實有這個欄位，請到「欄位對應」指定。</div>`;
   const bcBin = c => { const n = c.bidderCount; if (n == null) return null; return n === 1 ? '1 家' : n === 2 ? '2 家' : n === 3 ? '3 家' : n <= 5 ? '4–5 家' : '6 家以上'; };
   const bcOrder = ['1 家','2 家','3 家','4–5 家','6 家以上'];
   const rBins = [[0,80,'未滿 80%'],[80,85,'80–85%'],[85,90,'85–90%'],[90,95,'90–95%'],[95,98,'95–98%'],[98,100,'98% 以上未滿 100%'],[100,100.0001,'100%'],[100.0001,1e9,'超過 100%']];
@@ -818,28 +818,28 @@ function drawRank(){
   mountTable($('#rankTbl'), rankCols(), rankRows(), {sig:'rank-' + S.rankMode + Object.values(R.w).join(','), sort:'rank', dir:1, pageSize:100, onRow:r => vendorDrawer(r.name)});
 }
 
-/* ============ 畫面：圍標態樣 ============ */
-const stampHTML = l => l === 2 ? '<span class="stamp">高度疑似</span>' : l === 1 ? '<span class="stamp soft">留意</span>' : '';
+/* ============ 畫面：廠商關聯性 ============ */
+const stampHTML = l => l === 2 ? '<span class="stamp">高頻相關</span>' : l === 1 ? '<span class="stamp soft">相關</span>' : '';
 function renderRig(){
   const el = $('#tab-rig');
   if (!S.rig) computeRig();
-  const tabs = [['rotation','輪流得標'],['accompany','固定陪標'],['ratio','標比異常集中'],['pairs','共同投標組合']];
+  const tabs = [['rotation','交替得標情形'],['accompany','共同投標集中情形'],['ratio','標比集中情形'],['pairs','共同投標組合']];
   let h = `<div class="sub" role="group" aria-label="態樣">${tabs.map(([k, l]) => `<button data-rt="${k}" aria-pressed="${S.rigTab === k}">${l}</button>`).join('')}</div>`;
   h += `<div class="controls">`;
   if (S.rigTab !== 'ratio') h += `<div class="f"><label for="g_co">共同出現至少（次）</label><input id="g_co" type="number" min="2" value="${GS.minCo}"></div>`;
   else h += `<div class="f"><label for="g_thr">高標比門檻（%）</label><input id="g_thr" type="number" step="0.5" value="${GS.highThr}"></div>
     <div class="f"><label for="g_rn">最少有效件數</label><input id="g_rn" type="number" min="2" value="${GS.minRatioN}"></div>
     <div class="f"><label for="g_grp">分組方式</label><select id="g_grp">${[['winner','依得標廠商'],['unit','依招標單位'],['agency','依機關'],['unitWinner','依招標單位×得標廠商']].map(([v, l]) => `<option value="${v}"${GS.ratioGroup === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>`;
-  h += `<div class="f"><label for="g_flag">顯示</label><select id="g_flag"><option value="0">全部</option><option value="1"${S.flagOnly == 1 ? ' selected' : ''}>只看已標記</option><option value="2"${S.flagOnly == 2 ? ' selected' : ''}>只看高度疑似</option></select></div>`;
+  h += `<div class="f"><label for="g_flag">顯示</label><select id="g_flag"><option value="0">全部</option><option value="1"${S.flagOnly == 1 ? ' selected' : ''}>只看有標示者</option><option value="2"${S.flagOnly == 2 ? ' selected' : ''}>只看高頻相關</option></select></div>`;
   h += `<button class="btn" id="g_exp">匯出 Excel</button></div>`;
   const needB = S.rigTab !== 'ratio' && !S.hasBidders;
   const desc = {
-    rotation:`找出經常一起投標、而且彼此輪流拿下標案的兩家廠商。「兩者得標比例」是兩家共同出現的案件中由其中一家得標的比例；「均衡度」是兩家得標次數的接近程度（100% 代表各半）。比例 ≥80% 且均衡度 ≥50% 標記為高度疑似，≥60% 且 ≥25% 標記為留意。得標順序依決標日期排列：<span class="seq"><span class="a">甲</span></span> 為廠商甲得標、<span class="seq"><span class="b">乙</span></span> 為廠商乙得標、<span class="seq"><span class="o">·</span></span> 為其他廠商得標。`,
-    accompany:`找出經常參與投標、但多半輸給同一家得標廠商的陪標者。「集中度」是陪標廠商所有落標案件中，輸給這家得標廠商的比例。集中度 ≥60% 且陪標廠商得標率 ≤20% 標記為高度疑似；≥40% 且 ≤34% 標記為留意。`,
-    ratio:`依分組計算有底價案件的標比。高標比件數占 80% 以上、或標準差 ≤1 且平均 ≥97%，標記為高度疑似；占 60% 以上、或標準差 ≤2 且平均 ≥95%，標記為留意。沒有底價的案件（如部分最有利標）不列入，以免標比失真。`,
-    pairs:`列出經常一同投標的兩家廠商組合，以及各自得標的次數，可作為追查廠商關聯的起點。`,
+    rotation:`找出經常一起投標、而且彼此交替得標的兩家廠商。「兩者得標比例」是兩家共同出現的案件中由其中一家得標的比例；「均衡度」是兩家得標次數的接近程度（100% 代表各半）。比例 ≥80% 且均衡度 ≥50% 標示為高頻相關，≥60% 且 ≥25% 標示為相關。得標順序依決標日期排列：<span class="seq"><span class="a">甲</span></span> 為廠商甲得標、<span class="seq"><span class="b">乙</span></span> 為廠商乙得標、<span class="seq"><span class="o">·</span></span> 為其他廠商得標。`,
+    accompany:`列出經常參與投標、但多數案件由同一家廠商得標的組合。「集中度」是該廠商所有未得標案件中，由這家得標廠商得標的比例。集中度 ≥60% 且該廠商得標率 ≤20% 標示為高頻相關；≥40% 且 ≤34% 標示為相關。`,
+    ratio:`依分組計算有底價案件的標比。高標比件數占 80% 以上、或標準差 ≤1 且平均 ≥97%，標示為高頻相關；占 60% 以上、或標準差 ≤2 且平均 ≥95%，標示為相關。沒有底價的案件（如部分最有利標）不列入，以免標比失真。`,
+    pairs:`列出經常一同投標的兩家廠商組合，以及各自得標的次數，可作為了解廠商投標關聯的起點。`,
   }[S.rigTab];
-  h += `<p class="note">${desc}　以上僅為篩選線索，是否涉及異常採購仍須調卷研析。</p>`;
+  h += `<p class="note">${desc}　以上僅為資料比對結果，不代表個案有任何不當情形，實際情形仍須調卷研析。</p>`;
   if (S.rig.capped && S.rigTab !== 'ratio') h += `<p class="hint">有 ${S.rig.capped} 件案件投標廠商超過 40 家，組合計算只取前 40 家。</p>`;
   h += needB ? `<div class="warnbox">這項分析需要「參與競標廠商」欄位。請到「欄位對應」確認是否已指定。</div>` : `<div id="rigTbl"></div>`;
   el.innerHTML = h;
@@ -850,7 +850,7 @@ function renderRig(){
   bind('#g_rn', e => { GS.minRatioN = Math.max(2, +e.target.value || 2); drawRig(); });
   bind('#g_grp', e => { GS.ratioGroup = e.target.value; drawRig(); });
   bind('#g_flag', e => { S.flagOnly = +e.target.value; drawRig(); });
-  $('#g_exp').onclick = () => { const [cols, rows] = rigData(); exportRows({rotation:'輪流得標', accompany:'固定陪標', ratio:'標比異常集中', pairs:'共同投標組合'}[S.rigTab], cols.filter(c => c.k !== 'lv').concat([{k:'lvx', l:'判斷', v:r => r.level === 2 ? '高度疑似' : r.level === 1 ? '留意' : ''}]), rows); };
+  $('#g_exp').onclick = () => { const [cols, rows] = rigData(); exportRows({rotation:'交替得標情形', accompany:'共同投標集中情形', ratio:'標比集中情形', pairs:'共同投標組合'}[S.rigTab], cols.filter(c => c.k !== 'lv').concat([{k:'lvx', l:'關聯程度', v:r => r.level === 2 ? '高頻相關' : r.level === 1 ? '相關' : ''}]), rows); };
   if (!needB) drawRig();
 }
 function seqHTML(seq){
@@ -860,7 +860,7 @@ function seqHTML(seq){
 }
 function rigData(){
   const f = S.flagOnly || 0, keep = r => r.level >= f;
-  const lvCol = {k:'lv', l:'判斷', v:r => r.level, f:r => stampHTML(r.level)};
+  const lvCol = {k:'lv', l:'關聯程度', v:r => r.level, f:r => stampHTML(r.level)};
   if (S.rigTab === 'rotation') return [[lvCol,
     {k:'a', l:'廠商甲', v:r => r.a, cls:'nw'}, {k:'b', l:'廠商乙', v:r => r.b, cls:'nw'},
     {k:'n', l:'共同投標次數', v:r => r.n, t:'int'}, {k:'aW', l:'甲得標', v:r => r.aW, t:'int'}, {k:'bW', l:'乙得標', v:r => r.bW, t:'int'},
@@ -868,9 +868,9 @@ function rigData(){
     {k:'seq', l:'得標順序（依決標日期）', v:r => r.seq.map(x => ({a:'甲', b:'乙', ab:'共', o:'·'})[x]).join(''), f:r => seqHTML(r.seq)}],
     S.rig.rotation.filter(keep)];
   if (S.rigTab === 'accompany') return [[lvCol,
-    {k:'l', l:'陪標廠商', v:r => r.l, cls:'nw'}, {k:'w', l:'得標廠商', v:r => r.w, cls:'nw'},
-    {k:'n', l:'陪標次數', v:r => r.n, t:'int'}, {k:'lParts', l:'陪標廠商投標件數', v:r => r.lParts, t:'int'},
-    {k:'lWins', l:'陪標廠商得標件數', v:r => r.lWins, t:'int'}, {k:'wr', l:'陪標廠商得標率', v:r => r.wr, t:'pct'}, {k:'conc', l:'集中度', v:r => r.conc, t:'pct'}],
+    {k:'l', l:'未得標廠商', v:r => r.l, cls:'nw'}, {k:'w', l:'得標廠商', v:r => r.w, cls:'nw'},
+    {k:'n', l:'共同出現次數', v:r => r.n, t:'int'}, {k:'lParts', l:'該廠商投標件數', v:r => r.lParts, t:'int'},
+    {k:'lWins', l:'該廠商得標件數', v:r => r.lWins, t:'int'}, {k:'wr', l:'該廠商得標率', v:r => r.wr, t:'pct'}, {k:'conc', l:'集中度', v:r => r.conc, t:'pct'}],
     S.rig.accompany.filter(keep)];
   if (S.rigTab === 'ratio') {
     const gl = {winner:'得標廠商', unit:'招標單位', agency:'機關名稱', unitWinner:'招標單位｜得標廠商'}[GS.ratioGroup];
@@ -891,7 +891,7 @@ function drawRig(){
   rows.sort((a, b) => (b.level - a.level) || (b.n - a.n));
   mountTable(el, cols, rows, {sig:'rig-' + S.rigTab, sort:null, pageSize:100, empty:'目前條件下沒有符合的組合，可調低「共同出現至少」次數或放寬篩選條件。', onRow:r => {
     if (S.rigTab === 'ratio') openDrawer(r.key, `有效標比 ${r.n} 件，平均 ${fmtP(r.mean)}，標準差 ${r.sd.toFixed(2)}`, r.cases);
-    else if (S.rigTab === 'accompany') openDrawer(`${r.l} 陪標 ${r.w}`, `共同出現且由 ${esc(r.w)} 得標 ${r.n} 次；陪標廠商得標率 ${fmtP(r.wr)}，集中度 ${fmtP(r.conc)}`, r.cases);
+    else if (S.rigTab === 'accompany') openDrawer(`${r.l}／${r.w}`, `兩家共同出現且由 ${esc(r.w)} 得標 ${r.n} 次；${esc(r.l)} 得標率 ${fmtP(r.wr)}，集中度 ${fmtP(r.conc)}`, r.cases);
     else openDrawer(`${r.a} × ${r.b}`, `共同投標 ${r.n} 次，甲得標 ${r.aW} 次、乙得標 ${r.bW} 次`, r.cases,
       [{k:'who', l:'誰得標', v:c => c.winners.includes(r.a) ? (c.winners.includes(r.b) ? '共同' : '甲') : c.winners.includes(r.b) ? '乙' : '其他', f:c => c.winners.includes(r.a) ? (c.winners.includes(r.b) ? '共同' : '<b style="color:var(--accent)">甲</b>') : c.winners.includes(r.b) ? '<b style="color:var(--seal)">乙</b>' : '<span style="color:var(--muted)">其他</span>'}]);
   }});
