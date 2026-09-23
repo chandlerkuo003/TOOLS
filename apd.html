@@ -373,8 +373,18 @@ function parseDate(s){
 }
 function splitV(s){
   if (!s) return [];
+  // 先切開，再把括號被切斷的片段接回來（例如「全家便利商店股份有限公司 (Taiwan FamilyMart Co., Ltd.)」）
+  const raw = String(s).split(/[,，、;；\n\r|]+/);
+  const parts = []; let buf = '';
+  const open = t => (t.match(/[(（]/g) || []).length, close = t => (t.match(/[)）]/g) || []).length;
+  for (const piece of raw) {
+    buf = buf ? buf + ', ' + piece : piece;
+    const o = (buf.match(/[(（]/g) || []).length, c = (buf.match(/[)）]/g) || []).length;
+    if (o <= c) { parts.push(buf); buf = ''; }
+  }
+  if (buf) parts.push(buf);
   const out = [], seen = new Set();
-  for (let p of String(s).split(/[,，、;；\n\r|]+/)) {
+  for (let p of parts) {
     p = p.replace(/^["'\s]+|["'\s]+$/g, '').replace(/\s+/g, ' ');
     if (p && p !== '-' && p !== '無' && !seen.has(p)) { seen.add(p); out.push(p); }
   }
@@ -540,13 +550,16 @@ function computeRig(){
   }
   const pairList = [...pairs.values()].filter(p => p.n >= GS.minCo);
   // 交替得標
-  const rotation = pairList.filter(p => p.aW >= 1 && p.bW >= 1).map(p => {
-    const share = Math.min(1, (p.aW + p.bW) / p.n), bal = Math.min(p.aW, p.bW) / Math.max(p.aW, p.bW);
+  const rotation = pairList.map(p => {
     const seq = [...p.cases].sort((x, y) => (x.date || 0) - (y.date || 0)).map(c => { const aw = c.winners.includes(p.a), bw = c.winners.includes(p.b); return aw && bw ? 'ab' : aw ? 'a' : bw ? 'b' : 'o'; });
+    const both = seq.filter(x => x === 'ab').length;
+    const aOnly = seq.filter(x => x === 'a').length, bOnly = seq.filter(x => x === 'b').length;
+    const share = p.n ? (aOnly + bOnly) / p.n : 0;
+    const bal = Math.max(aOnly, bOnly) ? Math.min(aOnly, bOnly) / Math.max(aOnly, bOnly) : 0;
     let sw = 0, last = null; for (const s of seq) { if (s === 'a' || s === 'b') { if (last && s !== last) sw++; last = s; } }
-    const level = (share >= 0.8 && bal >= 0.5) ? 2 : (share >= 0.6 && bal >= 0.25) ? 1 : 0;
-    return {...p, share:share * 100, bal:bal * 100, seq, sw, level};
-  });
+    const level = (sw >= 1 && share >= 0.8 && bal >= 0.5) ? 2 : (sw >= 1 && share >= 0.6 && bal >= 0.25) ? 1 : 0;
+    return {...p, aOnly, bOnly, both, share:share * 100, bal:bal * 100, seq, sw, level};
+  }).filter(p => p.aOnly >= 1 && p.bOnly >= 1);
   // 共同投標集中
   const accompany = [...acc.values()].filter(a => a.n >= GS.minCo).map(a => {
     const lv = S.vs.get(a.l) || {parts:0, wins:0};
@@ -834,7 +847,7 @@ function renderRig(){
   h += `<button class="btn" id="g_exp">匯出 Excel</button></div>`;
   const needB = S.rigTab !== 'ratio' && !S.hasBidders;
   const desc = {
-    rotation:`找出經常一起投標、而且彼此交替得標的兩家廠商。「兩者得標比例」是兩家共同出現的案件中由其中一家得標的比例；「均衡度」是兩家得標次數的接近程度（100% 代表各半）。比例 ≥80% 且均衡度 ≥50% 標示為高頻相關，≥60% 且 ≥25% 標示為相關。得標順序依決標日期排列：<span class="seq"><span class="a">甲</span></span> 為廠商甲得標、<span class="seq"><span class="b">乙</span></span> 為廠商乙得標、<span class="seq"><span class="o">·</span></span> 為其他廠商得標。`,
+    rotation:`找出經常一起投標、而且彼此交替得標的兩家廠商。只計算<b>單獨得標</b>：兩家在同一案一起得標（複數決標）不算交替，另列於「兩家同時得標」。「單獨得標比例」是共同出現案件中由其中一家單獨得標的比例；「均衡度」是兩家單獨得標次數的接近程度（100% 代表各半）。須至少交替一次，且比例 ≥80%、均衡度 ≥50% 標示為高頻相關，≥60% 且 ≥25% 標示為相關。得標順序依決標日期排列：<span class="seq"><span class="a">甲</span></span> 為廠商甲得標、<span class="seq"><span class="b">乙</span></span> 為廠商乙得標、<span class="seq"><span class="o">·</span></span> 為其他廠商得標。`,
     accompany:`列出經常參與投標、但多數案件由同一家廠商得標的組合。「集中度」是該廠商所有未得標案件中，由這家得標廠商得標的比例。集中度 ≥60% 且該廠商得標率 ≤20% 標示為高頻相關；≥40% 且 ≤34% 標示為相關。`,
     ratio:`依分組計算有底價案件的標比。高標比件數占 80% 以上、或標準差 ≤1 且平均 ≥97%，標示為高頻相關；占 60% 以上、或標準差 ≤2 且平均 ≥95%，標示為相關。沒有底價的案件（如部分最有利標）不列入，以免標比失真。`,
     pairs:`列出經常一同投標的兩家廠商組合，以及各自得標的次數，可作為了解廠商投標關聯的起點。`,
@@ -863,8 +876,9 @@ function rigData(){
   const lvCol = {k:'lv', l:'關聯程度', v:r => r.level, f:r => stampHTML(r.level)};
   if (S.rigTab === 'rotation') return [[lvCol,
     {k:'a', l:'廠商甲', v:r => r.a, cls:'nw'}, {k:'b', l:'廠商乙', v:r => r.b, cls:'nw'},
-    {k:'n', l:'共同投標次數', v:r => r.n, t:'int'}, {k:'aW', l:'甲得標', v:r => r.aW, t:'int'}, {k:'bW', l:'乙得標', v:r => r.bW, t:'int'},
-    {k:'share', l:'兩者得標比例', v:r => r.share, t:'pct'}, {k:'bal', l:'均衡度', v:r => r.bal, t:'pct'}, {k:'sw', l:'輪替次數', v:r => r.sw, t:'int'},
+    {k:'n', l:'共同投標次數', v:r => r.n, t:'int'}, {k:'aOnly', l:'甲單獨得標', v:r => r.aOnly, t:'int'}, {k:'bOnly', l:'乙單獨得標', v:r => r.bOnly, t:'int'},
+    {k:'both', l:'兩家同時得標', v:r => r.both, t:'int'},
+    {k:'share', l:'單獨得標比例', v:r => r.share, t:'pct'}, {k:'bal', l:'均衡度', v:r => r.bal, t:'pct'}, {k:'sw', l:'交替次數', v:r => r.sw, t:'int'},
     {k:'seq', l:'得標順序（依決標日期）', v:r => r.seq.map(x => ({a:'甲', b:'乙', ab:'共', o:'·'})[x]).join(''), f:r => seqHTML(r.seq)}],
     S.rig.rotation.filter(keep)];
   if (S.rigTab === 'accompany') return [[lvCol,
@@ -892,7 +906,7 @@ function drawRig(){
   mountTable(el, cols, rows, {sig:'rig-' + S.rigTab, sort:null, pageSize:100, empty:'目前條件下沒有符合的組合，可調低「共同出現至少」次數或放寬篩選條件。', onRow:r => {
     if (S.rigTab === 'ratio') openDrawer(r.key, `有效標比 ${r.n} 件，平均 ${fmtP(r.mean)}，標準差 ${r.sd.toFixed(2)}`, r.cases);
     else if (S.rigTab === 'accompany') openDrawer(`${r.l}／${r.w}`, `兩家共同出現且由 ${esc(r.w)} 得標 ${r.n} 次；${esc(r.l)} 得標率 ${fmtP(r.wr)}，集中度 ${fmtP(r.conc)}`, r.cases);
-    else openDrawer(`${r.a} × ${r.b}`, `共同投標 ${r.n} 次，甲得標 ${r.aW} 次、乙得標 ${r.bW} 次`, r.cases,
+    else openDrawer(`${r.a} × ${r.b}`, `共同投標 ${r.n} 次${r.aOnly != null ? `，甲單獨得標 ${r.aOnly} 次、乙單獨得標 ${r.bOnly} 次、兩家同時得標 ${r.both} 次` : `，甲得標 ${r.aW} 次、乙得標 ${r.bW} 次`}`, r.cases,
       [{k:'who', l:'誰得標', v:c => c.winners.includes(r.a) ? (c.winners.includes(r.b) ? '共同' : '甲') : c.winners.includes(r.b) ? '乙' : '其他', f:c => c.winners.includes(r.a) ? (c.winners.includes(r.b) ? '共同' : '<b style="color:var(--accent)">甲</b>') : c.winners.includes(r.b) ? '<b style="color:var(--seal)">乙</b>' : '<span style="color:var(--muted)">其他</span>'}]);
   }});
 }
